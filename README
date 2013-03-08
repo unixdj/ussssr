@@ -1,0 +1,34 @@
+USSSSR, a UPower/Systemd Screen Saving Sleep Reactor
+
+Copyright 2013 Vadim Vygonets.  Licensed under WTFPL 2.0.
+
+Installation:
+
+go get github.com/unixdj/ussssr
+go install github.com/unixdj/ussssr
+
+Usage:
+
+ussssr [-b] COMMAND [ARGS...]
+
+USSSSR listens to sleep (suspend, hibernate) events broadcast by
+UPower or systemd on D-Bus and reacts to them by running a
+command which presumably will activate a screen saver to lock the
+screen.
+
+Upon startup USSSSR tries to open the systemd backend; if it's
+not available, UPower is tried; if that ain't there either, we
+bail out.
+
+In case the systemd backend is chosen, USSSSR inhibits sleep by
+taking a delay lock.  Unless the flag -b was passed, USSSSR will
+wait until the program finishes before releasing the lock, or
+unil it times out (three seconds).  Thus, commands such as
+"xset s activate" and "xscreensaver -lock", that activate the
+screen saver and exit, should be run in the foreground (i.e.,
+don't use -b).
+
+Regardless of whether the commands are run in the foreground or
+in the background, no more than one copy of the program will run
+at any time.  If a sleep event arrives while the program is
+running, the event will be swallowed.
