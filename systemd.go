@@ -20,6 +20,7 @@ const (
 	sdPath    = "/org/freedesktop/login1"
 	sdIface   = sdDest + ".Manager"
 	sdSignal  = "PrepareForSleep"
+	sdSigName = sdSignal + "." + sdIface
 	sdInhibit = sdIface + ".Inhibit"
 	sdFilter  = "type='signal',sender='" + sdDest + "',interface='" +
 		sdIface + "',member=" + sdSignal
@@ -68,9 +69,7 @@ func (be *SystemdBackend) inhibit() error {
 }
 
 func (be *SystemdBackend) Handle(sig dbus.Signal) (bool, error) {
-	if sig.Path != sdPath ||
-		sig.Name != sdSignal+"."+sdIface ||
-		len(sig.Body) < 1 {
+	if sig.Path != sdPath || sig.Name != sdSigName || len(sig.Body) < 1 {
 		return false, nil
 	}
 	b, ok := sig.Body[0].(bool)

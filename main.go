@@ -36,13 +36,7 @@ type (
 	}
 )
 
-var (
-	start    = make(chan startReq)
-	backends = []func(*dbus.Connection) (Backend, error){
-		NewSystemdBackend,
-		NewUPowerBackend,
-	}
-)
+var start = make(chan startReq)
 
 func runLoop(nowait bool, args []string) {
 	var (
@@ -52,21 +46,6 @@ func runLoop(nowait bool, args []string) {
 	)
 	for {
 		select {
-		case err := <-stop:
-			if !running {
-				log.Println("wait: not running")
-				break
-			}
-			running = false
-			if ee, ok := err.(*exec.ExitError); ok {
-				// log and swallow non-zero exit status
-				log.Println(logPref, "wait:", ee)
-				err = nil
-			}
-			if finished != nil {
-				finished <- err
-				finished = nil
-			}
 		case req := <-start:
 			if running {
 				req.started <- errors.New("exec: already running")
@@ -88,6 +67,21 @@ func runLoop(nowait bool, args []string) {
 				break
 			}
 			finished = req.finished
+		case err := <-stop:
+			if !running {
+				log.Println("wait: not running")
+				break
+			}
+			running = false
+			if ee, ok := err.(*exec.ExitError); ok {
+				// log and swallow non-zero exit status
+				log.Println(logPref, "wait:", ee)
+				err = nil
+			}
+			if finished != nil {
+				finished <- err
+				finished = nil
+			}
 		}
 	}
 }
@@ -132,30 +126,33 @@ Usage: ` + os.Args[0] + ` [-b] COMMAND [ARGS...]
 	return *nowait, flag.Args()
 }
 
+func newBackend(conn *dbus.Connection) Backend {
+	for _, f := range []func(*dbus.Connection) (Backend, error){
+		NewSystemdBackend,
+		NewUPowerBackend,
+	} {
+		if be, err := f(conn); err == nil {
+			return be
+		}
+	}
+	log.Fatalln(logPref, "No backend found, exiting")
+	// NOTREACHED
+	return nil
+}
+
 func main() {
 	nowait, args := parseFlags()
 
 	conn, err := dbus.ConnectSystemBus()
 	if err != nil {
-		log.Fatalln(logPref, "dbus.Connect", err)
+		log.Fatalln(logPref, "connect to D-Bus system bus:", err)
 	}
 	defer conn.Close()
 
-	var be Backend
-	for _, v := range backends {
-		be, err = v(conn)
-		if err == nil {
-			goto haveit
-		}
+	be := newBackend(conn)
+	if r := <-conn.BusObject().Call(addMatch, 0, be.Filter()); r.Err != nil {
+		log.Fatalln(logPref, "add signal filter:", r.Err)
 	}
-	log.Fatalln(logPref, "No backend found, exiting")
-haveit:
-
-	reply := <-conn.BusObject().Call(addMatch, 0, be.Filter())
-	if reply.Err != nil {
-		log.Fatalln(logPref, "AddMatch", reply.Err)
-	}
-	//log.Println(logPref, "Backend", be.Name(), "initialised")
 
 	go runLoop(nowait, args)
 

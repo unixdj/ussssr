@@ -11,12 +11,13 @@ package main
 import "github.com/guelfey/go.dbus"
 
 const (
-	upDest   = "org.freedesktop.UPower"
-	upPath   = "/org/freedesktop/UPower"
-	upIface  = upDest
-	upSignal = "NotifySleep" // XXX: or should we use "Sleeping" instead?
-	upTest   = upIface + ".SuspendAllowed"
-	upFilter = "type='signal',sender='" + upDest + "',interface='" +
+	upDest    = "org.freedesktop.UPower"
+	upPath    = "/org/freedesktop/UPower"
+	upIface   = upDest
+	upSignal  = "NotifySleep" // XXX: or should we use "Sleeping" instead?
+	upSigName = upSignal + "." + upIface
+	upTest    = upIface + ".SuspendAllowed"
+	upFilter  = "type='signal',sender='" + upDest + "',interface='" +
 		upIface + "',member=" + upSignal
 )
 
@@ -34,5 +35,5 @@ func (UPowerBackend) Filter() string { return upFilter }
 func (UPowerBackend) Release() error { return nil }
 
 func (UPowerBackend) Handle(sig dbus.Signal) (bool, error) {
-	return sig.Path == upPath && sig.Name == upSignal+"."+upIface, nil
+	return sig.Path == upPath && sig.Name == upSigName, nil
 }
