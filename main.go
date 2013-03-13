@@ -172,6 +172,11 @@ func main() {
 
 			select {
 			case <-rc:
+				// After running a foreground command, sleep
+				// for a bit to let the screen saver engage
+				if !nowait {
+					time.Sleep(time.Second / 2)
+				}
 			case <-time.After(3 * time.Second):
 				log.Println(logPref,
 					"command timed out, consider using -b")
