@@ -21,13 +21,13 @@ const (
 		upIface + "',member=" + upSignal
 )
 
-type UPowerBackend bool
+type UPowerBackend struct{}
 
 func NewUPowerBackend(conn *dbus.Connection) (Backend, error) {
 	if r := <-conn.Object(upDest, upPath).Call(upTest, 0); r.Err != nil {
 		return nil, r.Err
 	}
-	return UPowerBackend(false), nil
+	return UPowerBackend{}, nil
 }
 
 func (UPowerBackend) Name() string   { return "UPower" }
