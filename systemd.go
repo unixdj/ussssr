@@ -10,9 +10,10 @@ package main
 
 import (
 	"errors"
-	"github.com/guelfey/go.dbus"
 	"log"
 	"syscall"
+
+	"github.com/guelfey/go.dbus"
 )
 
 const (

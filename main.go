@@ -12,11 +12,12 @@ package main
 import (
 	"errors"
 	"flag"
-	"github.com/guelfey/go.dbus"
 	"log"
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/guelfey/go.dbus"
 )
 
 const (
@@ -55,6 +56,7 @@ func runLoop(nowait bool, args []string) {
 			cmd := exec.Command(args[0], args[1:]...)
 			if err := cmd.Start(); err != nil {
 				req.started <- err
+				req.finished <- nil
 				break
 			}
 			running = true
@@ -86,15 +88,10 @@ func runLoop(nowait bool, args []string) {
 	}
 }
 
-func run(rc chan error) error {
-	c := make(chan error)
-	start <- startReq{c, rc}
-	err := <-c
-	// if the process didn't start, signal finish
-	if err != nil {
-		rc <- nil
-	}
-	return err
+func run(finished chan error) error {
+	started := make(chan error, 1)
+	start <- startReq{started, finished}
+	return <-started
 }
 
 func parseFlags() (bool, []string) {
@@ -165,13 +162,13 @@ func main() {
 		case err != nil:
 			log.Println(logPref, err)
 		case act:
-			rc := make(chan error, 1)
-			if err = run(rc); err != nil {
+			finished := make(chan error, 1)
+			if err = run(finished); err != nil {
 				log.Println(logPref, err)
 			}
 
 			select {
-			case <-rc:
+			case <-finished:
 				// After running a command, sleep for a bit
 				// to let the screen saver engage
 				time.Sleep(time.Second / 2)
