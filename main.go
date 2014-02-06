@@ -29,7 +29,7 @@ type (
 	Backend interface {
 		Name() string
 		Filter() string
-		Handle(dbus.Signal) (act bool, err error)
+		Handle(*dbus.Signal) (act bool, err error)
 		Release() error
 	}
 	startReq struct {
@@ -123,8 +123,8 @@ Usage: ` + os.Args[0] + ` [-b] COMMAND [ARGS...]
 	return *nowait, flag.Args()
 }
 
-func newBackend(conn *dbus.Connection) Backend {
-	for _, f := range []func(*dbus.Connection) (Backend, error){
+func newBackend(conn *dbus.Conn) Backend {
+	for _, f := range []func(*dbus.Conn) (Backend, error){
 		NewSystemdBackend,
 		NewUPowerBackend,
 	} {
@@ -140,20 +140,20 @@ func newBackend(conn *dbus.Connection) Backend {
 func main() {
 	nowait, args := parseFlags()
 
-	conn, err := dbus.ConnectSystemBus()
+	conn, err := dbus.SystemBus()
 	if err != nil {
 		log.Fatalln(logPref, "connect to D-Bus system bus:", err)
 	}
 	defer conn.Close()
 
 	be := newBackend(conn)
-	if r := <-conn.BusObject().Call(addMatch, 0, be.Filter()); r.Err != nil {
+	if r := conn.BusObject().Call(addMatch, 0, be.Filter()); r.Err != nil {
 		log.Fatalln(logPref, "add signal filter:", r.Err)
 	}
 
 	go runLoop(nowait, args)
 
-	sc := make(chan dbus.Signal, 5)
+	sc := make(chan *dbus.Signal, 5)
 	conn.Signal(sc)
 
 	for sig := range sc {

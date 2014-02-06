@@ -23,8 +23,8 @@ const (
 
 type UPowerBackend struct{}
 
-func NewUPowerBackend(conn *dbus.Connection) (Backend, error) {
-	if r := <-conn.Object(upDest, upPath).Call(upTest, 0); r.Err != nil {
+func NewUPowerBackend(conn *dbus.Conn) (Backend, error) {
+	if r := conn.Object(upDest, upPath).Call(upTest, 0); r.Err != nil {
 		return nil, r.Err
 	}
 	return UPowerBackend{}, nil
@@ -34,6 +34,6 @@ func (UPowerBackend) Name() string   { return "UPower" }
 func (UPowerBackend) Filter() string { return upFilter }
 func (UPowerBackend) Release() error { return nil }
 
-func (UPowerBackend) Handle(sig dbus.Signal) (bool, error) {
+func (UPowerBackend) Handle(sig *dbus.Signal) (bool, error) {
 	return sig.Path == upPath && sig.Name == upSigName, nil
 }

@@ -32,7 +32,7 @@ type SystemdBackend struct {
 	fd  int
 }
 
-func NewSystemdBackend(conn *dbus.Connection) (Backend, error) {
+func NewSystemdBackend(conn *dbus.Conn) (Backend, error) {
 	be := SystemdBackend{
 		obj: conn.Object(sdDest, sdPath),
 		fd:  -1,
@@ -56,7 +56,7 @@ func (be *SystemdBackend) inhibit() error {
 			// Try to inhibit anyway
 		}
 	}
-	r := <-be.obj.Call(sdInhibit, 0,
+	r := be.obj.Call(sdInhibit, 0,
 		"sleep", "ussssr", "Lock screen", "delay")
 	if r.Err != nil {
 		return r.Err
@@ -69,7 +69,7 @@ func (be *SystemdBackend) inhibit() error {
 	return errors.New(sdInhibit + "() returned an invalid value")
 }
 
-func (be *SystemdBackend) Handle(sig dbus.Signal) (bool, error) {
+func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool, error) {
 	if sig.Path != sdPath || sig.Name != sdSigName || len(sig.Body) < 1 {
 		return false, nil
 	}
