@@ -21,10 +21,10 @@ const (
 	sdPath    = "/org/freedesktop/login1"
 	sdIface   = sdDest + ".Manager"
 	sdSignal  = "PrepareForSleep"
-	sdSigName = sdSignal + "." + sdIface
+	sdSigName = sdIface + "." + sdSignal
 	sdInhibit = sdIface + ".Inhibit"
-	sdFilter  = "type='signal',sender='" + sdDest + "',interface='" +
-		sdIface + "',member=" + sdSignal
+	sdFilter  = "type='signal',interface='" + sdIface + "',member=" +
+		sdSignal
 )
 
 type SystemdBackend struct {

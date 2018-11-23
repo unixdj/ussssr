@@ -15,10 +15,10 @@ const (
 	upPath    = "/org/freedesktop/UPower"
 	upIface   = upDest
 	upSignal  = "NotifySleep" // XXX: or should we use "Sleeping" instead?
-	upSigName = upSignal + "." + upIface
+	upSigName = upIface + "." + upSignal
 	upTest    = upIface + ".SuspendAllowed"
-	upFilter  = "type='signal',sender='" + upDest + "',interface='" +
-		upIface + "',member=" + upSignal
+	upFilter  = "type='signal',interface='" + upIface + "',member=" +
+		upSignal
 )
 
 type UPowerBackend struct{}
