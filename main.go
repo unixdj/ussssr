@@ -72,7 +72,7 @@ func runLoop(nowait bool, args []string) {
 			finished = req.finished
 		case err := <-stop:
 			if !running {
-				log.Println("wait: not running")
+				log.Println(logPref, "wait: not running")
 				break
 			}
 			running = false
