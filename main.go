@@ -50,6 +50,7 @@ func runLoop(nowait bool, args []string) {
 		case req := <-start:
 			if running {
 				req.started <- errors.New("exec: already running")
+				req.finished <- nil
 				break
 			}
 
@@ -175,6 +176,7 @@ func main() {
 			case <-time.After(3 * time.Second):
 				log.Println(logPref,
 					"command timed out, consider using -b")
+				go func() { <-finished }()
 			}
 
 			if err = be.Release(); err != nil {
