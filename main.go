@@ -37,7 +37,16 @@ type (
 	}
 )
 
-var start = make(chan startReq)
+var (
+	debug bool
+	start = make(chan startReq)
+)
+
+func debugln(v ...interface{}) {
+	if debug {
+		log.Println(v...)
+	}
+}
 
 func runLoop(nowait bool, args []string) {
 	var (
@@ -97,6 +106,7 @@ func run(finished chan error) error {
 
 func parseFlags() (bool, []string) {
 	var nowait = flag.Bool("b", false, "run command in the background")
+	flag.BoolVar(&debug, "d", false, "debug")
 	flag.Usage = func() {
 		os.Stderr.WriteString(
 			`USSSSR - UPower/Systemd Screen Saving Sleep Reactor
@@ -111,7 +121,7 @@ should be used.  Commands that activate the screen saver and
 exit immediately (such as in case of "xset s activate" or
 "xscreensaver -lock") would be better without it.
 
-Usage: ` + os.Args[0] + ` [-b] COMMAND [ARGS...]
+Usage: ` + os.Args[0] + ` [-b] [-d] COMMAND [ARGS...]
 `)
 		flag.PrintDefaults()
 	}
@@ -130,6 +140,8 @@ func newBackend(conn *dbus.Conn) Backend {
 		NewUPowerBackend,
 	} {
 		if be, err := f(conn); err == nil {
+			debugln(logPref, "using backend", be.Name(),
+				"with filter", be.Filter())
 			return be
 		}
 	}
@@ -158,6 +170,7 @@ func main() {
 	conn.Signal(sc)
 
 	for sig := range sc {
+		debugln(logPref, "signal rceived:", sig)
 		act, err := be.Handle(sig)
 		switch {
 		case err != nil:
@@ -166,10 +179,13 @@ func main() {
 			finished := make(chan error, 1)
 			if err = run(finished); err != nil {
 				log.Println(logPref, err)
+			} else {
+				debugln(logPref, "running command")
 			}
 
 			select {
 			case <-finished:
+				debugln(logPref, "command finished")
 				// After running a command, sleep for a bit
 				// to let the screen saver engage
 				time.Sleep(time.Second / 2)
