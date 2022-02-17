@@ -170,7 +170,7 @@ func main() {
 	conn.Signal(sc)
 
 	for sig := range sc {
-		debugln(logPref, "signal rceived:", sig)
+		debugln(logPref, "signal received:", sig)
 		act, err := be.Handle(sig)
 		switch {
 		case err != nil:
