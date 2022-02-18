@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Vadim Vygonets <vadik@vygo.net>
+ * Copyright (c) 2013, 2022 Vadim Vygonets <vadik@vygo.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -25,7 +25,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/guelfey/go.dbus"
+	dbus "github.com/guelfey/go.dbus"
 )
 
 const (
@@ -180,10 +180,10 @@ func main() {
 	for sig := range sc {
 		debugln(logPref, "signal received:", sig)
 		act, err := be.Handle(sig)
-		switch {
-		case err != nil:
+		if err != nil {
 			log.Println(logPref, err)
-		case act:
+		}
+		if act {
 			finished := make(chan error, 1)
 			if err = run(finished); err != nil {
 				log.Println(logPref, err)
