@@ -22,7 +22,7 @@ import (
 	"os/exec"
 	"time"
 
-	dbus "github.com/guelfey/go.dbus"
+	dbus "github.com/godbus/dbus/v5"
 )
 
 const (

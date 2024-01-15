@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	dbus "github.com/guelfey/go.dbus"
+	dbus "github.com/godbus/dbus/v5"
 )
 
 const (
@@ -37,7 +37,7 @@ const (
 )
 
 type SystemdBackend struct {
-	obj *dbus.Object
+	obj dbus.BusObject
 	fd  int
 }
 
