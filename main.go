@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2022 Vadim Vygonets <vadik@vygo.net>
+ * Copyright (c) 2013, 2022, 2024 Vadim Vygonets <vadik@vygo.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,192 +20,125 @@ package main
 import (
 	"errors"
 	"flag"
+	"io"
 	"log"
 	"os"
-	"os/exec"
+	"strconv"
 	"time"
-
-	dbus "github.com/guelfey/go.dbus"
 )
 
-const (
-	logPref  = "ussssr:"
-	addMatch = "org.freedesktop.DBus.AddMatch"
-)
+var conf = struct {
+	cmd      []string
+	delay    time.Duration
+	bg       bool
+	debug    bool
+	logLevel int
+}{
+	logLevel: 1,
+	delay:    defaultDelay,
+}
 
-type (
-	Backend interface {
-		Name() string
-		Filter() string
-		Handle(*dbus.Signal) (act bool, err error)
-		Release() error
-	}
-	startReq struct {
-		started, finished chan error
-	}
-)
+// logging
 
-var (
-	debug bool
-	start = make(chan startReq)
-)
-
-func debugln(v ...interface{}) {
-	if debug {
+func loglnAt(ll int, v ...interface{}) {
+	if conf.logLevel >= ll {
 		log.Println(v...)
 	}
 }
 
-func runLoop(nowait bool, args []string) {
-	var (
-		running  bool
-		finished chan error
-		stop     = make(chan error, 1)
-	)
-	for {
-		select {
-		case req := <-start:
-			if running {
-				req.started <- errors.New("exec: already running")
-				req.finished <- nil
-				break
-			}
+func logln(v ...interface{})   { loglnAt(1, v...) }
+func debugln(v ...interface{}) { loglnAt(2, v...) }
 
-			cmd := exec.Command(args[0], args[1:]...)
-			if err := cmd.Start(); err != nil {
-				req.started <- err
-				req.finished <- nil
-				break
-			}
-			running = true
-			req.started <- nil
+// command line flags
 
-			go func() { stop <- cmd.Wait() }()
+type durFlag struct{ *time.Duration } // -d, -t
 
-			if nowait {
-				req.finished <- nil
-				break
-			}
-			finished = req.finished
-		case err := <-stop:
-			if !running {
-				log.Println(logPref, "wait: not running")
-				break
-			}
-			running = false
-			if ee, ok := err.(*exec.ExitError); ok {
-				// log and swallow non-zero exit status
-				log.Println(logPref, "wait:", ee)
-				err = nil
-			}
-			if finished != nil {
-				finished <- err
-				finished = nil
-			}
-		}
+func (d durFlag) String() string {
+	if d.Duration != nil {
+		return d.Duration.String()
 	}
+	return ""
 }
 
-func run(finished chan error) error {
-	started := make(chan error, 1)
-	start <- startReq{started, finished}
-	return <-started
-}
-
-func parseFlags() (bool, []string) {
-	var nowait = flag.Bool("b", false, "run command in the background")
-	flag.BoolVar(&debug, "d", false, "debug")
-	flag.Usage = func() {
-		os.Stderr.WriteString(
-			`USSSSR - UPower/Systemd Screen Saving Sleep Reactor
-
-USSSSR listens to sleep (suspend, hibernate) events broadcast
-by UPower or systemd on D-Bus and reacts to them by running
-a command which presumably activates a screen saver.
-
-If the command is a screen saver that doesn't fork and doesn't
-exit until the screen is unlocked (such as "slock"), the flag -b
-should be used.  Commands that activate the screen saver and
-exit immediately (such as in case of "xset s activate" or
-"xscreensaver -lock") would be better without it.
-
-Usage: ` + os.Args[0] + ` [-b] [-d] COMMAND [ARGS...]
-`)
-		flag.PrintDefaults()
+func (d durFlag) Set(s string) error {
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		*d.Duration = time.Duration(f * float64(time.Second))
+	} else if *d.Duration, err = time.ParseDuration(s); err != nil {
+		return err
 	}
-
-	flag.Parse()
-	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(2)
+	if *d.Duration < 0 {
+		return errors.New("invalid duration")
 	}
-	return *nowait, flag.Args()
-}
-
-func newBackend(conn *dbus.Conn) Backend {
-	for _, f := range []func(*dbus.Conn) (Backend, error){
-		NewSystemdBackend,
-		NewUPowerBackend,
-	} {
-		if be, err := f(conn); err == nil {
-			debugln(logPref, "using backend", be.Name(),
-				"with filter", be.Filter())
-			return be
-		}
-	}
-	log.Fatalln(logPref, "No backend found, exiting")
-	// NOTREACHED
 	return nil
 }
 
+func printHelp(long bool) {
+	w := flag.CommandLine.Output()
+	if long {
+		io.WriteString(w,
+			`USSSSR - UPower/Systemd Screen Saving Sleep Reactor
+
+USSSSR runs a command when a UPower or systemd sleep (suspend,
+hibernate) event is received on D-Bus.
+
+When a sleep signal is received, if the command is not running,
+it is started.  If a foreground command exits with status 0
+before the timeout, or a background command is started, the sleep
+inhibit lock is released after a delay to let the screen saver
+engage before sleep.  Otherwise the lock is released immediately.
+
+A screen saver that doesn't fork or exit until the screen is
+unlocked (such as "slock") should be run in the background, a
+command that exits immediately (such as "xset s activate" or
+"xscreensaver -lock") in the foreground.
+
+Delay can be specified in seconds (e.g., "0.5") or in any format
+accepted by time.ParseDuration (e.g., "500ms").
+
+`)
+	}
+	io.WriteString(w, "Usage:\n  ")
+	io.WriteString(w, os.Args[0])
+	io.WriteString(w, " [flags] command [argument ...]\n\nFlags:\n")
+	flag.PrintDefaults()
+}
+
+func help(long bool) {
+	flag.CommandLine.SetOutput(os.Stdout)
+	printHelp(long)
+	os.Exit(0)
+}
+
+func usage() {
+	os.Stderr.WriteString("\n")
+	printHelp(false)
+}
+
+func parseFlags() {
+	flag.Var(durFlag{&conf.delay}, "d", "`delay` after command")
+	flag.BoolVar(&conf.bg, "b", false, "run command in the background")
+	flag.BoolVar(&conf.debug, "debug", false,
+		"use debug backend (non-functional)")
+	flag.BoolFunc("q", "quiet",
+		func(string) error { conf.logLevel--; return nil })
+	flag.BoolFunc("v", "verbose",
+		func(string) error { conf.logLevel++; return nil })
+	flag.BoolFunc("h", "short help",
+		func(string) error { help(false); return nil })
+	flag.BoolFunc("help", "long help",
+		func(string) error { help(true); return nil })
+	flag.Usage = usage
+	flag.Parse()
+	conf.cmd = flag.Args()
+	if len(conf.cmd) == 0 {
+		printHelp(false)
+		os.Exit(2)
+	}
+}
+
 func main() {
-	nowait, args := parseFlags()
-
-	conn, err := dbus.SystemBus()
-	if err != nil {
-		log.Fatalln(logPref, "connect to D-Bus system bus:", err)
-	}
-	defer conn.Close()
-
-	be := newBackend(conn)
-	if r := conn.BusObject().Call(addMatch, 0, be.Filter()); r.Err != nil {
-		log.Fatalln(logPref, "add signal filter:", r.Err)
-	}
-
-	go runLoop(nowait, args)
-
-	sc := make(chan *dbus.Signal, 5)
-	conn.Signal(sc)
-
-	for sig := range sc {
-		debugln(logPref, "signal received:", sig)
-		act, err := be.Handle(sig)
-		if err != nil {
-			log.Println(logPref, err)
-		}
-		if act {
-			finished := make(chan error, 1)
-			if err = run(finished); err != nil {
-				log.Println(logPref, err)
-			} else {
-				debugln(logPref, "running command")
-			}
-
-			select {
-			case <-finished:
-				debugln(logPref, "command finished")
-				// After running a command, sleep for a bit
-				// to let the screen saver engage
-				time.Sleep(time.Second / 2)
-			case <-time.After(3 * time.Second):
-				log.Println(logPref,
-					"command timed out, consider using -b")
-				go func() { <-finished }()
-			}
-
-			if err = be.Release(); err != nil {
-				log.Println(logPref, be.Name()+":", err)
-			}
-		}
-	}
+	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+	log.SetPrefix("ussssr: ")
+	parseFlags()
+	loop()
 }

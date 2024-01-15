@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Vadim Vygonets <vadik@vygo.net>
+ * Copyright (c) 2013, 2024 Vadim Vygonets <vadik@vygo.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,20 +18,21 @@ package main
 
 import (
 	"errors"
-	"log"
 	"syscall"
+	"time"
 
-	"github.com/guelfey/go.dbus"
+	dbus "github.com/guelfey/go.dbus"
 )
 
 const (
-	sdDest    = "org.freedesktop.login1"
-	sdPath    = "/org/freedesktop/login1"
-	sdIface   = sdDest + ".Manager"
-	sdSignal  = "PrepareForSleep"
-	sdSigName = sdIface + "." + sdSignal
-	sdInhibit = sdIface + ".Inhibit"
-	sdFilter  = "type='signal',interface='" + sdIface + "',member=" +
+	sdDest       = "org.freedesktop.login1"
+	sdPath       = "/org/freedesktop/login1"
+	sdIface      = sdDest + ".Manager"
+	sdSignal     = "PrepareForSleep"
+	sdSigName    = sdIface + "." + sdSignal
+	sdInhibit    = sdIface + ".Inhibit"
+	sdMaxInhibit = sdIface + ".InhibitDelayMaxUSec"
+	sdFilter     = "type='signal',interface='" + sdIface + "',member=" +
 		sdSignal
 )
 
@@ -40,15 +41,20 @@ type SystemdBackend struct {
 	fd  int
 }
 
-func NewSystemdBackend(conn *dbus.Conn) (Backend, error) {
+var (
+	ErrSDInhibit    = errors.New("invalid response from " + sdInhibit)
+	ErrSDMaxInhibit = errors.New("invalid response from " + sdMaxInhibit)
+)
+
+func NewSystemdBackend(conn *dbus.Conn) Backend {
 	be := SystemdBackend{
 		obj: conn.Object(sdDest, sdPath),
 		fd:  -1,
 	}
-	if err := be.inhibit(); err != nil {
-		return nil, err
+	if be.inhibit() != nil {
+		return nil
 	}
-	return &be, nil
+	return &be
 }
 
 func (*SystemdBackend) Name() string   { return "systemd" }
@@ -56,42 +62,71 @@ func (*SystemdBackend) Filter() string { return sdFilter }
 
 func (be *SystemdBackend) inhibit() error {
 	if be.fd != -1 {
-		log.Println(logPref, "(*SystemdBackend).inhibit()"+
-			" called twice without closing FD")
+		logln("systemd.inhibit called before releasing old lock")
 		// The fd is not trusted, better close it
 		if err := be.Release(); err != nil {
-			log.Println(logPref, err)
-			// Try to inhibit anyway
+			logln(err)
 		}
+		// Try to inhibit anyway
 	}
 	r := be.obj.Call(sdInhibit, 0,
 		"sleep", "ussssr", "Lock screen", "delay")
 	if r.Err != nil {
 		return r.Err
+	} else if len(r.Body) < 1 {
+		return ErrSDInhibit
 	}
-	if fd, ok := r.Body[0].(dbus.UnixFD); ok && fd >= 0 {
-		be.fd = int(fd)
-		syscall.CloseOnExec(be.fd)
-		return nil
+	fd, ok := r.Body[0].(dbus.UnixFD)
+	if !ok || fd < 0 {
+		return ErrSDInhibit
 	}
-	return errors.New(sdInhibit + "() returned an invalid value")
+	be.fd = int(fd)
+	syscall.CloseOnExec(be.fd)
+	return nil
 }
 
-func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool, error) {
+func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool /* time.Duration, */, error) {
 	if sig.Path != sdPath || sig.Name != sdSigName || len(sig.Body) < 1 {
-		return false, nil
+		return false, ErrDBusSignal
 	}
-	b, ok := sig.Body[0].(bool)
-	if ok && !b {
-		return b, be.inhibit()
+	var err error
+	sleep, ok := sig.Body[0].(bool)
+	if !ok {
+		err = ErrDBusSignal
+	} else if !sleep {
+		err = be.inhibit()
+	} else {
+		// var v dbus.Variant
+		v, ee := be.obj.GetProperty(sdMaxInhibit)
+		vv, ok := v.Value().(int)
+		debugln(vv, ok, ee)
 	}
-	return b, nil
+	return sleep, err
 }
 
-func (be *SystemdBackend) Release() (err error) {
+func (be *SystemdBackend) Release() error {
+	var err error
 	if be.fd != -1 {
 		err = syscall.Close(be.fd)
 		be.fd = -1
+	} else {
+		logln("systemd.Release called but no inhibit lock is held")
 	}
-	return
+	return err
+}
+
+func (be SystemdBackend) MaxDelay() (time.Duration, error) {
+	vari, err := be.obj.GetProperty(sdMaxInhibit)
+	if err != nil {
+		return -1, err
+	}
+	v, ok := vari.Value().(uint64)
+	if !ok {
+		return -1, ErrSDMaxInhibit
+	}
+	const max = uint64((1<<63 - 1) / time.Microsecond)
+	if v > max {
+		v = max // 292 years is enough for anyone
+	}
+	return time.Duration(v) * time.Microsecond, nil
 }

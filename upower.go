@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Vadim Vygonets <vadik@vygo.net>
+ * Copyright (c) 2013, 2024 Vadim Vygonets <vadik@vygo.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,26 +16,30 @@
 
 package main
 
-import "github.com/guelfey/go.dbus"
+import (
+	"time"
+
+	dbus "github.com/guelfey/go.dbus"
+)
 
 const (
 	upDest    = "org.freedesktop.UPower"
 	upPath    = "/org/freedesktop/UPower"
 	upIface   = upDest
-	upSignal  = "NotifySleep" // XXX: or should we use "Sleeping" instead?
-	upSigName = upIface + "." + upSignal
-	upTest    = upIface + ".SuspendAllowed"
-	upFilter  = "type='signal',interface='" + upIface + "',member=" +
+	upSignal  = "NotifySleep"
+	upSigName = upDest + "." + upSignal
+	upTest    = upDest + ".SuspendAllowed"
+	upFilter  = "type='signal',interface='" + upDest + "',member=" +
 		upSignal
 )
 
 type UPowerBackend struct{}
 
-func NewUPowerBackend(conn *dbus.Conn) (Backend, error) {
-	if r := conn.Object(upDest, upPath).Call(upTest, 0); r.Err != nil {
-		return nil, r.Err
+func NewUPowerBackend(conn *dbus.Conn) Backend {
+	if conn.Object(upDest, upPath).Call(upTest, 0).Err != nil {
+		return nil
 	}
-	return UPowerBackend{}, nil
+	return UPowerBackend{}
 }
 
 func (UPowerBackend) Name() string   { return "UPower" }
@@ -43,5 +47,13 @@ func (UPowerBackend) Filter() string { return upFilter }
 func (UPowerBackend) Release() error { return nil }
 
 func (UPowerBackend) Handle(sig *dbus.Signal) (bool, error) {
-	return sig.Path == upPath && sig.Name == upSigName, nil
+	if sig.Path == upPath && sig.Name == upSigName {
+		return true, nil
+	} else {
+		return false, ErrDBusSignal
+	}
+}
+
+func (UPowerBackend) MaxDelay() (time.Duration, error) {
+	return -1, nil
 }
