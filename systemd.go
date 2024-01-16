@@ -95,11 +95,6 @@ func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool /* time.Duration, */, e
 		err = ErrDBusSignal
 	} else if !sleep {
 		err = be.inhibit()
-	} else {
-		// var v dbus.Variant
-		v, ee := be.obj.GetProperty(sdMaxInhibit)
-		vv, ok := v.Value().(int)
-		debugln(vv, ok, ee)
 	}
 	return sleep, err
 }
