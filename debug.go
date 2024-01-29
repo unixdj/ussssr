@@ -38,7 +38,7 @@ DebugBackend reads commands from stdin, simulating events:
     e  Running command exits with status 0
     k  Running command killed
 
-'s' and 'k' are no-ops if no command is running.
+'e' and 'k' are no-ops if no command is running.
 */
 type DebugBackend struct {
 	cmd       chan byte
@@ -103,8 +103,7 @@ func (be *DebugBackend) loop() {
 					be.stopped = nil
 				}
 			}
-		case s := <-be.start:
-			be.stopped = s
+		case be.stopped = <-be.start:
 		}
 	}
 }
@@ -138,6 +137,6 @@ func (be *DebugBackend) run(stopped chan<- error) error {
 	return nil
 }
 
-func (DebugBackend) MaxDelay() (time.Duration, error) {
+func (DebugBackend) MaxInhibit() (time.Duration, error) {
 	return -1, nil
 }

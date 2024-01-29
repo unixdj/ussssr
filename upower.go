@@ -47,13 +47,12 @@ func (UPowerBackend) Filter() string { return upFilter }
 func (UPowerBackend) Release() error { return nil }
 
 func (UPowerBackend) Handle(sig *dbus.Signal) (bool, error) {
-	if sig.Path == upPath && sig.Name == upSigName {
-		return true, nil
-	} else {
+	if sig.Path != upPath || sig.Name != upSigName {
 		return false, ErrDBusSignal
 	}
+	return true, nil
 }
 
-func (UPowerBackend) MaxDelay() (time.Duration, error) {
+func (UPowerBackend) MaxInhibit() (time.Duration, error) {
 	return -1, nil
 }

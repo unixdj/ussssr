@@ -85,7 +85,7 @@ func (be *SystemdBackend) inhibit() error {
 	return nil
 }
 
-func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool /* time.Duration, */, error) {
+func (be *SystemdBackend) Handle(sig *dbus.Signal) (bool, error) {
 	if sig.Path != sdPath || sig.Name != sdSigName || len(sig.Body) < 1 {
 		return false, ErrDBusSignal
 	}
@@ -110,7 +110,7 @@ func (be *SystemdBackend) Release() error {
 	return err
 }
 
-func (be SystemdBackend) MaxDelay() (time.Duration, error) {
+func (be SystemdBackend) MaxInhibit() (time.Duration, error) {
 	vari, err := be.obj.GetProperty(sdMaxInhibit)
 	if err != nil {
 		return -1, err

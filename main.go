@@ -51,7 +51,7 @@ func debugln(v ...interface{}) { loglnAt(2, v...) }
 
 // command line flags
 
-type durFlag struct{ *time.Duration } // -d, -t
+type durFlag struct{ *time.Duration }
 
 func (d durFlag) String() string {
 	if d.Duration != nil {
@@ -63,6 +63,7 @@ func (d durFlag) String() string {
 func (d durFlag) Set(s string) error {
 	if f, err := strconv.ParseFloat(s, 64); err == nil {
 		*d.Duration = time.Duration(f * float64(time.Second))
+		// overflow results in -1<<63; handled below
 	} else if *d.Duration, err = time.ParseDuration(s); err != nil {
 		return err
 	}

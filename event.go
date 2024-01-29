@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	defaultMaxDelay = 5 * time.Second
-	defaultDelay    = 500 * time.Millisecond
+	defaultTimeout = 5 * time.Second        // default max inhibit time
+	defaultDelay   = 500 * time.Millisecond // default delay after command
 )
 
 var ErrDBusSignal = errors.New("invalid D-Bus signal")
@@ -44,15 +44,15 @@ The Release method is called after the sleep preparation is
 complete, in order to release the sleep inhibit lock, if one is
 taken.
 
-The MaxDelay method returns the current maximum inhibit delay.
+The MaxInhibit method returns the current maximum inhibit delay.
 If the query is not supported, the returned Duration must be -1.
 */
 type Backend interface {
-	Name() string                      // return backend name
-	Filter() string                    // return string for DBus.AddMatch
-	Handle(*dbus.Signal) (bool, error) // handle signal
-	Release() error                    // release sleep inhibit lock
-	MaxDelay() (time.Duration, error)  // return maximum inhibit delay
+	Name() string                       // return backend name
+	Filter() string                     // return string for DBus.AddMatch
+	Handle(*dbus.Signal) (bool, error)  // handle signal
+	Release() error                     // release sleep inhibit lock
+	MaxInhibit() (time.Duration, error) // return maximum inhibit delay
 }
 
 // newBackend returns a Backend, or nil if none is available.
@@ -87,9 +87,9 @@ func openConn() (Backend, chan *dbus.Signal) {
 	}
 	debugln("using backend", be.Name(), "with filter", be.Filter())
 
-	const addMatch = "org.freedesktop.DBus.AddMatch"
-	if r := conn.BusObject().Call(addMatch, 0, be.Filter()); r.Err != nil {
-		log.Fatalln("add signal filter:", r.Err)
+	const add = "org.freedesktop.DBus.AddMatch"
+	if err := conn.BusObject().Call(add, 0, be.Filter()).Err; err != nil {
+		log.Fatalln("add signal filter:", err)
 	}
 	sc := make(chan *dbus.Signal, 4)
 	conn.Signal(sc)
@@ -129,8 +129,8 @@ func setTimeout(timeout *time.Duration, max time.Duration) {
 }
 
 func updateTimeout(timeout *time.Duration, be Backend) {
-	if max, err := be.MaxDelay(); err != nil {
-		logln(be.Name()+".MaxDelay:", err)
+	if max, err := be.MaxInhibit(); err != nil {
+		logln(be.Name()+".MaxInhibit:", err)
 	} else if max >= 0 {
 		setTimeout(timeout, max)
 	}
@@ -200,7 +200,7 @@ func loop() {
 	// default inhibit delay.  With systemd backend the
 	// current maximum inhibit delay is queried and timeout
 	// is adjusted after executing the command.
-	setTimeout(&timeout, defaultMaxDelay)
+	setTimeout(&timeout, defaultTimeout)
 
 	for {
 		select {
